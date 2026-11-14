@@ -28,7 +28,7 @@ function carcass(c, { y0 = 0, hh = c.h - y0, cols = 1, rows = 1, drawers = false
     const fx = x - ww / 2 + cw * (i + 0.5), fy = by + rh * j, f = c.box(cw - gap * 2, rh - gap * 2, ft, glass ? c.m('glass', '#cfe6ee') : front, fx, fy + gap, z + dd / 2 - ft / 2);
     if (glass) f.castShadow = false; if (!handle) continue;
     if (drawers) c.box(Math.min(0.16, cw * 0.4), 0.014, 0.022, hm, fx, fy + rh * 0.62, z + dd / 2 + 0.011);
-    else c.box(0.014, Math.min(0.16, rh * 0.3), 0.022, hm, fx + (i % 2 === 0 && cols > 1 ? 1 : -1) * (cw / 2 - 0.04), fy + (y0 > 1 ? 0.12 : rh - 0.14 - Math.min(0.16, rh * 0.3)) , z + dd / 2 + 0.011);
+    else c.box(0.014, Math.min(0.16, rh * 0.3), 0.022, hm, fx + (i % 2 === 0 && cols > 1 ? 1 : -1) * (cw / 2 - 0.04), fy + (rh > 1.2 ? 0.92 : y0 > 1 ? 0.12 : rh - 0.14 - Math.min(0.16, rh * 0.3)), z + dd / 2 + 0.011);
   }
 }
 B.bed = c => { const { w, d, h } = c, wood = c.m('wood', c.color), bh = 0.3, mh = 0.22, md = d - 0.1;

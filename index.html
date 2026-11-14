@@ -81,7 +81,7 @@ table.bom input{width:64px;padding:2px 4px}
 #planSvg .op.window{fill:#74c0fc;stroke:#1864ab}
 #planSvg .op.sel{stroke:#e03131;stroke-width:3}
 #planSvg .oph{fill:#fff;stroke:#333;cursor:ew-resize}
-#planSvg text{font-size:12px;font-weight:600;fill:#1d2330;text-anchor:middle;cursor:text;paint-order:stroke;stroke:#fff;stroke-width:3px}
+#planSvg text{user-select:none;-webkit-user-select:none;font-size:12px;font-weight:600;fill:#1d2330;text-anchor:middle;cursor:text;paint-order:stroke;stroke:#fff;stroke-width:3px}
 #planSvg .cal{stroke:#e03131;stroke-width:2;stroke-dasharray:6 4}
 #immBar{position:absolute;top:12px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:10px;background:rgba(20,24,34,.86);color:#fff;padding:8px 10px 8px 14px;border-radius:24px;z-index:5}
 #immBar.on{display:flex}
@@ -193,7 +193,8 @@ function el(tag, attrs = {}, ...kids) {
   for (const k of kids.flat()) if (k != null && k !== false) e.append(k.nodeType ? k : document.createTextNode(k));
   return e;
 }
-function toast(msg, type = '', ms = 2600) { const t = el('div', { class: 'toast ' + type }, msg); $('#toasts').append(t); setTimeout(() => t.remove(), ms); }
+function toast(msg, type = '', ms = 2600) { const box = $('#toasts'), t = el('div', { class: 'toast ' + type }, msg); while (box.children.length >= 3) box.firstChild.remove(); box.append(t); setTimeout(() => t.remove(), ms); }
+function capturePointer(elm, ev) { try { elm.setPointerCapture(ev.pointerId); } catch (e) { /* pointer already gone */ } }
 function setStatus(s) { $('#status').textContent = s; }
 function download(name, data, mime = 'application/octet-stream') {
   const url = data instanceof Blob ? URL.createObjectURL(data) : (typeof data === 'string' && data.startsWith('data:') ? data : URL.createObjectURL(new Blob([data], { type: mime })));
@@ -472,11 +473,14 @@ const sun = new THREE.DirectionalLight(0xfff2dd, 2.2); sun.shadow.mapSize.set(20
 let pmrem = null, envTex = null, composer = null, ssaoPass = null;
 const QUAL = { level: 0, pr: Math.min(window.devicePixelRatio || 1, 2), frames: 0, t0: performance.now(), fps: 60, low: 0 };
 let needsRender = true; const invalidate = () => { needsRender = true; };
-controls.addEventListener('change', invalidate); controls2d.addEventListener('change', invalidate);
+controls.addEventListener('change', invalidate);
+/* OrbitControls fires 'change' on every update() for orthographic cameras — only react when the 2D view really moved. */
+let last2d = '';
+controls2d.addEventListener('change', () => { const k = ocam.zoom.toFixed(5) + '|' + ocam.position.x.toFixed(4) + '|' + ocam.position.z.toFixed(4); if (k === last2d) return; last2d = k; invalidate(); peRedraw(); });
 
 function applySkin() {
   const s = CFG.skin, night = CFG.night;
-  renderer.shadowMap.enabled = s !== 'lowpoly' && CFG.shadows && QUAL.level < 3;
+  renderer.shadowMap.enabled = s !== 'lowpoly' && CFG.shadows && QUAL.level < 3 && VIEW.mode !== '2d';   // the 2D plan is drawn shadow-free
   renderer.shadowMap.type = s === 'realistic' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
   renderer.toneMapping = s === 'realistic' ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping; renderer.toneMappingExposure = night ? 0.9 : 1.05;
   if (s === 'realistic') { if (!envTex) { pmrem = new THREE.PMREMGenerator(renderer); envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture; } scene.environment = envTex; } else scene.environment = null;
@@ -501,6 +505,7 @@ function updateSun() {
   if (CFG.night) { sun.color.set('#8fa6d8'); sun.intensity = 0.18; hemi.intensity = 0.16; amb.intensity = 0.1; scene.background = new THREE.Color('#141a26'); }
   else { sun.color.copy(warm); sun.intensity = (s === 'lowpoly' ? 1.4 : s === 'standard' ? 2.0 : 2.6) * (0.35 + 0.65 * Math.sin(ang)); hemi.intensity = s === 'realistic' ? 0.55 : 0.95; amb.intensity = s === 'lowpoly' ? 0.45 : 0.22;
     scene.background = new THREE.Color('#cfe0f0').lerp(new THREE.Color('#f3c9a0'), 1 - clamp(Math.sin(ang) * 1.8, 0, 1)); }
+  if (VIEW.mode === 'imm' || VIEW.mode === 'walk') amb.intensity += CFG.night ? 0.12 : 0.8;   // rooms are roofed in first-person views: lift the fill light
   renderer.shadowMap.needsUpdate = true; updateNightLights(); invalidate();
 }
 /* Interior lights: placed light fixtures become point lights at night (capped for performance). */
@@ -619,7 +624,7 @@ function buildOpening(o, w, L, target) {
 function buildPlan() {
   const P = D.plan, H = P.wallHeight;
   ['floors', 'walls', 'ceilings'].forEach(k => disposeGroup(G[k])); WALLINFO.length = COLLIDERS.length = SWINGS.length = 0;
-  const b = planBounds(), slab = boxMesh(b.w + 0.6, 0.12, b.h + 0.6, M('paint', '#b9b4aa'), b.cx, -0.125, b.cy); slab.castShadow = false; slab.userData = { kind: 'slab' }; G.floors.add(slab);
+  const sillMat = M('paint', '#b9b4aa');   // thin strip under every wall = door thresholds
   for (const r of P.rooms) {
     if (r.poly.length < 3) continue;
     const geo = new THREE.ShapeGeometry(shapeOf(r.poly, true)); geo.rotateX(-Math.PI / 2); const f = new THREE.Mesh(geo, floorMaterial(floorSpec(r))); f.receiveShadow = true; f.position.y = 0.001; f.userData = { kind: 'floor', roomId: r.id }; G.floors.add(f);
@@ -631,6 +636,7 @@ function buildPlan() {
     const info = buildWallPieces(w, wh, full, cutMat); buildWallPieces(w, Math.min(wh, LOW_H), low, cutMat);
     info.ops.forEach(q => buildOpening(q.o, w, info.L, full));
     group.position.set(w.a[0], 0, w.a[1]); group.rotation.y = -Math.atan2(info.u[1], info.u[0]); low.visible = false; G.walls.add(group);
+    const th = boxMesh(info.L + w.t, 0.1, w.t, sillMat, info.L / 2, -0.1, 0); th.castShadow = false; th.userData = { kind: 'slab' }; group.add(th);
     WALLINFO.push({ wall: w, group, full, low, n: info.n, mid: [(w.a[0] + w.b[0]) / 2, (w.a[1] + w.b[1]) / 2], short: wh <= LOW_H + 0.3 });
     // colliders: wall stretches that are not door openings
     const doors = info.ops.filter(q => q.o.type === 'door').sort((a, c) => a.s0 - c.s0); let s = 0;
@@ -701,7 +707,7 @@ function carcass(c, { y0 = 0, hh = c.h - y0, cols = 1, rows = 1, drawers = false
     const fx = x - ww / 2 + cw * (i + 0.5), fy = by + rh * j, f = c.box(cw - gap * 2, rh - gap * 2, ft, glass ? c.m('glass', '#cfe6ee') : front, fx, fy + gap, z + dd / 2 - ft / 2);
     if (glass) f.castShadow = false; if (!handle) continue;
     if (drawers) c.box(Math.min(0.16, cw * 0.4), 0.014, 0.022, hm, fx, fy + rh * 0.62, z + dd / 2 + 0.011);
-    else c.box(0.014, Math.min(0.16, rh * 0.3), 0.022, hm, fx + (i % 2 === 0 && cols > 1 ? 1 : -1) * (cw / 2 - 0.04), fy + (y0 > 1 ? 0.12 : rh - 0.14 - Math.min(0.16, rh * 0.3)) , z + dd / 2 + 0.011);
+    else c.box(0.014, Math.min(0.16, rh * 0.3), 0.022, hm, fx + (i % 2 === 0 && cols > 1 ? 1 : -1) * (cw / 2 - 0.04), fy + (rh > 1.2 ? 0.92 : y0 > 1 ? 0.12 : rh - 0.14 - Math.min(0.16, rh * 0.3)), z + dd / 2 + 0.011);
   }
 }
 B.bed = c => { const { w, d, h } = c, wood = c.m('wood', c.color), bh = 0.3, mh = 0.22, md = d - 0.1;
@@ -906,7 +912,7 @@ function rayWalls(ox, oy, dx, dy) {
   return best;
 }
 /* --- object operations (all undoable) --- */
-function selectObjects(ids, additive) { SEL.unit = null; SEL.ids = additive ? [...new Set([...SEL.ids, ...ids])] : ids.slice(); updateSelectionVisuals(); changedUI(); }
+function selectObjects(ids, additive) { const hadUnit = SEL.unit; SEL.unit = null; if (hadUnit) buildKitchen(); SEL.ids = additive ? [...new Set([...SEL.ids, ...ids])] : ids.slice(); updateSelectionVisuals(); changedUI(); }
 function changedUI() { listeners.forEach(fn => fn({ ui: 1, selection: 1 })); }
 function placeObject(type, x, z, select = true) {
   const o = newObject(type, x, z); if (!o) return null; const def = defOf(o);
@@ -980,21 +986,26 @@ function autoFillKitchen({ base = true, wall = true, pref = 0.6, openShelf = fal
   const rects = K.runs.map(r => ({ id: r.id, poly: runRect(r) }));
   for (const r of K.runs) { const g = runGeom(r), fx = K.fixtures.filter(f => f.run === r.id); let at = 0, i = 0;
     for (const w of fillWidths(g.L, pref)) { const mid = at + w / 2, front = runPoint(r, g, mid, r.depth + 0.08), blind = rects.some(q => q.id !== r.id && pointInPoly(front[0], front[1], q.poly));
-      const overSink = fx.some(f => f.type === 'sink' && Math.abs(f.at - mid) < (f.w + w) / 2 - 0.05), overHob = fx.find(f => f.type === 'hob' && Math.abs(f.at - mid) < Math.max(f.w, w) / 2);
+      const overSink = fx.some(f => f.type === 'sink' && Math.abs(f.at - mid) < (f.w + w) / 2 - 0.05), overHob = fx.find(f => f.type === 'hob' && f.at >= at - 1e-6 && f.at < at + w);
       if (base) KU.baseUnits.push({ id: uid('kb'), run: r.id, at: r3(at), w, style: blind ? 'corner' : w < 0.2 ? 'filler' : overSink ? 'shutter' : (overHob || i % 3 === 1) ? 'drawer' : 'shutter' });
-      if (wall && !blind && w >= 0.2) KU.wallUnits.push({ id: uid('kw'), run: r.id, at: r3(at), w, style: overHob ? 'chimney' : openShelf && i % 3 === 2 ? 'open' : 'shutter' });
-      at += w; i++; } }
+      at += w; i++; }
+    if (!wall) continue;
+    /* wall units: a 600 mm chimney hood centred over each hob, standard modules in the stretches between; nothing above blind corners */
+    const hobs = fx.filter(f => f.type === 'hob').sort((a, b) => a.at - b.at), spans = []; let s0 = 0;
+    for (const f of hobs) { const c0 = clamp(f.at - 0.3, 0, Math.max(0, g.L - 0.6)); if (c0 - s0 > 0.02) spans.push([s0, c0, 0]); spans.push([c0, Math.min(g.L, c0 + 0.6), 1]); s0 = Math.min(g.L, c0 + 0.6); } if (g.L - s0 > 0.02) spans.push([s0, g.L, 0]);
+    let j = 0; for (const [a, b, hood] of spans) { if (hood) { KU.wallUnits.push({ id: uid('kw'), run: r.id, at: r3(a), w: r3(b - a), style: 'chimney' }); continue; } let p = a;
+      for (const w of fillWidths(b - a, pref)) { const front = runPoint(r, g, p + w / 2, r.depth + 0.08), blind = rects.some(q => q.id !== r.id && pointInPoly(front[0], front[1], q.poly));
+        if (!blind && w >= 0.15) KU.wallUnits.push({ id: uid('kw'), run: r.id, at: r3(p), w, style: openShelf && j % 3 === 2 ? 'open' : 'shutter' }); p += w; j++; } } }
   SEL.unit = null; if (silent) return; changed({ kitchen: 1, ui: 1 }); toast('Kitchen cabinets generated', 'ok');
 }
 function clearKitchen(kind) { pushUndo(); if (kind !== 'wall') D.kitchen.baseUnits = []; if (kind !== 'base') D.kitchen.wallUnits = []; SEL.unit = null; changed({ kitchen: 1, ui: 1 }); }
 function unitList(kind) { return kind === 'base' ? D.kitchen.baseUnits : kind === 'wall' ? D.kitchen.wallUnits : D.plan.kitchen.fixtures; }
 function getUnit(ref) { return ref ? unitList(ref.kind).find(u => u.id === ref.id) : null; }
 function selectUnit(ref) { SEL.unit = ref; SEL.ids = []; updateSelectionVisuals(); buildKitchen(); changedUI(); }
-/* Re-pack the units of one run edge to edge (called after a width change so neighbours shift along). */
-function repackRun(kind, runId) { let at = 0; unitList(kind).filter(u => u.run === runId).sort((a, b) => a.at - b.at).forEach(u => { u.at = r3(at); at += u.w; }); const r = kRun(runId); return r ? at - runGeom(r).L : 0; }
 function setUnitProp(ref, patch) {
-  const u = getUnit(ref); if (!u) return; pushUndo(); Object.assign(u, patch); for (const k in patch) if (patch[k] === undefined) delete u[k];
-  if (ref.kind !== 'fixture' && ('w' in patch)) { const over = repackRun(ref.kind, u.run); if (over > 0.01) toast('Units now exceed the counter run by ' + fmtLen(over, 1), 'err'); }
+  const u = getUnit(ref); if (!u) return; pushUndo(); const oldW = u.w; Object.assign(u, patch); for (const k in patch) if (patch[k] === undefined) delete u[k];
+  if (ref.kind !== 'fixture' && ('w' in patch)) { const dl = u.w - oldW, l = unitList(ref.kind).filter(q => q.run === u.run); l.forEach(q => { if (q !== u && q.at > u.at - 1e-6) q.at = r3(q.at + dl); });   // neighbours shift along, gaps are kept
+    const over = Math.max(...l.map(q => q.at + q.w)) - runGeom(kRun(u.run)).L; if (over > 0.01) toast('Units now exceed the counter run by ' + fmtLen(over, 1), 'err'); }
   if (ref.kind === 'fixture') { const r = kRun(u.run); if (r) { const g = runGeom(r); u.w = clamp(u.w, 0.25, g.L - 0.1); u.d = clamp(u.d, 0.25, r.depth - 0.1); u.at = clamp(u.at, u.w / 2 + 0.03, g.L - u.w / 2 - 0.03); } }
   changed({ kitchen: 1, ui: 1 });
 }
@@ -1056,13 +1067,13 @@ canvas.addEventListener('pointerdown', ev => {
   canvas.focus(); if (ev.button !== 0 || VIEW.mode === 'imm' || VIEW.mode === 'walk' || PE.on) return;
   DRAG = { type: 'none', sx: ev.clientX, sy: ev.clientY, moved: false };
   if (TOOL.name === 'measure' || TOOL.name === 'paint') { DRAG.type = 'tool'; return; }
-  if (rotHandle) { setRay(ev); if (ray.intersectObject(rotHandle).length) { DRAG.type = 'rotate'; DRAG.id = SEL.ids[0]; controls.enabled = controls2d.enabled = false; canvas.setPointerCapture(ev.pointerId); return; } }
+  if (rotHandle) { setRay(ev); if (ray.intersectObject(rotHandle).length) { DRAG.type = 'rotate'; DRAG.id = SEL.ids[0]; controls.enabled = controls2d.enabled = false; capturePointer(canvas, ev); return; } }
   const h = pick(ev, PICKABLE()), ud = h?.object.userData || {};
   if (ud.objId) { const id = ud.objId, o = objById(id); if (!o) return;
     if (ev.shiftKey) { selectObjects(SEL.ids.includes(id) ? SEL.ids.filter(i => i !== id) : [...SEL.ids, id]); DRAG.type = 'sel'; controls.enabled = controls2d.enabled = false; return; }
     if (!SEL.ids.includes(id)) selectObjects([id]);
     DRAG.type = 'move'; DRAG.id = id; DRAG.p0 = floorPoint(ev); DRAG.orig = new Map(SEL.ids.map(objById).filter(q => q && !q.locked).map(q => [q.id, { x: q.x, z: q.z }]));
-    controls.enabled = controls2d.enabled = false; canvas.setPointerCapture(ev.pointerId);
+    controls.enabled = controls2d.enabled = false; capturePointer(canvas, ev);
   } else if (ud.unitRef) { selectUnit(ud.unitRef); DRAG.type = 'sel'; } else DRAG.clear = true;
 }, { capture: true });
 canvas.addEventListener('pointermove', ev => {
@@ -1124,7 +1135,7 @@ function flyTo(pos, target, ms = 700, done) {
   stopTransition(); const p0 = cam.position.clone(), t0 = controls.target.clone(), p1 = new THREE.Vector3(...pos), t1 = new THREE.Vector3(...target);
   VIEW.transition = tween(ms, t => { cam.position.lerpVectors(p0, p1, t); controls.target.lerpVectors(t0, t1, t); cam.lookAt(controls.target); }, () => { VIEW.transition = null; done && done(); });
 }
-function resetView(ms = 800) { const b = planBounds(), R = Math.max(b.w, b.h); if (VIEW.mode === '2d') return fit2d(b, ms); if (VIEW.mode !== '3d') return; flyTo([b.cx + R * 0.55, R * 0.95, b.cy + R * 0.8], [b.cx, 0, b.cy], ms); }
+function resetView(ms = 800) { const b = planBounds(), R = Math.max(b.w, b.h); if (VIEW.mode === '2d') return fit2d(b, ms); if (VIEW.mode !== '3d') return; flyTo([b.cx + R * 0.3, R * 1.0, b.cy + R * 0.85], [b.cx, 0, b.cy], ms); }
 function fit2d(b, ms = 600) {
   const a = viewEl.clientWidth / viewEl.clientHeight, z1 = Math.min(20 * a / (b.w + 2.5), 20 / (b.h + 2.5)), z0 = ocam.zoom, c0 = controls2d.target.clone(), c1 = new THREE.Vector3(b.cx, 0, b.cy); stopTransition();
   VIEW.transition = tween(ms, t => { ocam.zoom = lerp(z0, z1, t); controls2d.target.lerpVectors(c0, c1, t); ocam.position.set(controls2d.target.x, 60, controls2d.target.z); ocam.updateProjectionMatrix(); peRedraw(); }, () => { VIEW.transition = null; });
@@ -1147,7 +1158,7 @@ function setViewMode(m) {
   stopTransition(); if (m !== '2d' && PE.on) togglePlanEdit(false);
   VIEW.mode = m; activeCam = m === '2d' ? ocam : cam; controls.enabled = m === '3d'; controls2d.enabled = m === '2d';
   if (m === '2d') { ocam.position.set(controls2d.target.x, 60, controls2d.target.z); fit2d(planBounds(), 1); }
-  syncViewUI(); setupComposer(); updateWallVisibility(true); updateRoomLabels(); updateSelectionVisuals(); setStatus(m === '2d' ? '2D plan: drag to pan, scroll to zoom. Items can be selected and dragged here too.' : defaultStatus()); invalidate();
+  syncViewUI(); applySkin(); updateWallVisibility(true); updateRoomLabels(); updateSelectionVisuals(); setStatus(m === '2d' ? '2D plan: drag to pan, scroll to zoom. Items can be selected and dragged here too.' : defaultStatus()); invalidate();
 }
 function syncViewUI() { const m = VIEW.mode === 'imm' || VIEW.mode === 'trans' ? '3d' : VIEW.mode; $$('#segView button').forEach(b => b.classList.toggle('on', b.dataset.v === m)); $('#immBar').classList.toggle('on', VIEW.mode === 'imm' || VIEW.mode === 'walk');
   $('#immHint').textContent = VIEW.mode === 'walk' ? 'Walk: W A S D / arrows · drag to look · Shift = faster' : 'Drag to look around 360° · scroll to zoom'; $('#btnExitImm').textContent = VIEW.mode === 'walk' ? '✕ Exit walk mode (Esc)' : '✕ Exit immersive view (Esc)'; }
@@ -1157,7 +1168,7 @@ function insidePoint(r) { let c = polyCentroid(r.poly); if (!pointInPoly(c[0], c
 function enterFirstPerson(x, z, mode, label) {
   stopTransition(); if (VIEW.mode === '2d') { if (PE.on) togglePlanEdit(false); activeCam = cam; controls2d.enabled = false; }
   if (VIEW.mode === '3d' || VIEW.mode === '2d' || !VIEW.prev) VIEW.prev = { pos: cam.position.toArray(), target: controls.target.toArray() };
-  controls.enabled = false; VIEW.mode = mode; setTool('select'); syncViewUI(); setupComposer(); updateRoomLabels(); updateSelectionVisuals(); updateWallVisibility(true);
+  controls.enabled = false; VIEW.mode = mode; setTool('select'); syncViewUI(); setupComposer(); updateSun(); updateRoomLabels(); updateSelectionVisuals(); updateWallVisibility(true);
   const p0 = cam.position.clone(), q0 = cam.quaternion.clone(), f0 = cam.fov, p1 = new THREE.Vector3(x, EYE, z), d = new THREE.Vector3(); cam.getWorldDirection(d);
   VIEW.yaw = Math.abs(d.x) + Math.abs(d.z) < 0.05 ? 0 : Math.atan2(-d.x, -d.z); VIEW.pitch = 0; const q1 = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, VIEW.yaw, 0, 'YXZ'));
   VIEW.transition = tween(900, t => { cam.position.lerpVectors(p0, p1, t); cam.quaternion.slerpQuaternions(q0, q1, t); cam.fov = lerp(f0, 70, t); cam.updateProjectionMatrix(); }, () => { VIEW.transition = null; applyLook(); });
@@ -1169,13 +1180,13 @@ function exitImmersive(after) {
   if (VIEW.mode !== 'imm' && VIEW.mode !== 'walk' && VIEW.mode !== 'trans') return; stopTransition();
   const b = planBounds(), prev = VIEW.prev || { pos: [b.cx + 8, 14, b.cy + 12], target: [b.cx, 0, b.cy] }, p0 = cam.position.clone(), q0 = cam.quaternion.clone(), f0 = cam.fov, p1 = new THREE.Vector3(...prev.pos), tg = new THREE.Vector3(...prev.target);
   const q1 = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(p1, tg, cam.up));
-  VIEW.mode = 'trans'; VIEW.keys = {}; syncViewUI(); updateWallVisibility(true);
+  VIEW.mode = 'trans'; VIEW.keys = {}; syncViewUI(); updateSun(); updateWallVisibility(true);
   VIEW.transition = tween(800, t => { cam.position.lerpVectors(p0, p1, t); cam.quaternion.slerpQuaternions(q0, q1, t); cam.fov = lerp(f0, 50, t); cam.updateProjectionMatrix(); }, () => {
     VIEW.transition = null; VIEW.mode = '3d'; VIEW.prev = null; controls.target.copy(tg); cam.position.copy(p1); cam.lookAt(tg); controls.enabled = true; controls.update(); syncViewUI(); setupComposer(); updateWallVisibility(true); updateRoomLabels(); updateSelectionVisuals(); setStatus(defaultStatus()); after && after(); });
 }
 /* Look-around (immersive + walk): mouse / touch drag, wheel = field-of-view zoom */
 let LOOK = null;
-canvas.addEventListener('pointerdown', ev => { if (VIEW.mode !== 'imm' && VIEW.mode !== 'walk') return; LOOK = { x: ev.clientX, y: ev.clientY }; canvas.setPointerCapture(ev.pointerId); });
+canvas.addEventListener('pointerdown', ev => { if (VIEW.mode !== 'imm' && VIEW.mode !== 'walk') return; LOOK = { x: ev.clientX, y: ev.clientY }; capturePointer(canvas, ev); });
 canvas.addEventListener('pointermove', ev => { if (!LOOK || VIEW.transition) return; const k = 0.0045 * cam.fov / 70; VIEW.yaw += (ev.clientX - LOOK.x) * k; VIEW.pitch = clamp(VIEW.pitch + (ev.clientY - LOOK.y) * k, -1.45, 1.45); LOOK.x = ev.clientX; LOOK.y = ev.clientY; applyLook(); });
 canvas.addEventListener('pointerup', () => { LOOK = null; }); canvas.addEventListener('pointercancel', () => { LOOK = null; });
 canvas.addEventListener('wheel', ev => { if (VIEW.mode !== 'imm' && VIEW.mode !== 'walk') return; ev.preventDefault(); cam.fov = clamp(cam.fov + Math.sign(ev.deltaY) * 3, 25, 95); cam.updateProjectionMatrix(); invalidate(); }, { passive: false });
@@ -1231,7 +1242,6 @@ function peRedraw() {
   if (PE.pts.length) { const a = w2s(...PE.pts[0]), b = w2s(...(PE.pts[1] || PE.hover || PE.pts[0])); out.push(`<line class="cal" x1="${f(a[0])}" y1="${f(a[1])}" x2="${f(b[0])}" y2="${f(b[1])}"/><circle cx="${f(a[0])}" cy="${f(a[1])}" r="4" fill="#e03131"/>`); }
   svg.innerHTML = out.join('');
 }
-controls2d.addEventListener('change', peRedraw);
 svg.addEventListener('wheel', ev => { ev.preventDefault(); canvas.dispatchEvent(new WheelEvent('wheel', ev)); }, { passive: false });
 svg.addEventListener('pointerdown', ev => {
   const t = ev.target, ds = t.dataset || {}, p = evW(ev);
@@ -1247,7 +1257,8 @@ svg.addEventListener('pointerdown', ev => {
   else if (ds.op) { PE.sel = { type: 'opening', id: ds.op }; d = { kind: 'op', o: D.plan.openings.find(o => o.id === ds.op) }; }
   else if (ds.wall) PE.sel = { type: 'wall', id: ds.wall };
   else if (ds.roomname) PE.sel = { type: 'room', id: ds.roomname };
-  if (d) { PE.drag = d; d.moved = false; svg.setPointerCapture(ev.pointerId); } pePanel(); peRedraw(); ev.stopPropagation();
+  if (d) { PE.drag = d; d.moved = false; capturePointer(svg, ev); } pePanel(); if (!ds.roomname) peRedraw();   // keep the label element alive so a double-click can land on it
+  ev.stopPropagation();
 });
 svg.addEventListener('pointermove', ev => {
   const p = evW(ev), d = PE.drag; if (PE.tool && PE.pts.length === 1) { PE.hover = p; peRedraw(); return; } if (!d) return; if (!d.moved) { d.moved = true; pushUndo(); }
@@ -1260,7 +1271,7 @@ svg.addEventListener('pointermove', ev => {
   peRedraw();
 });
 svg.addEventListener('pointerup', () => { const d = PE.drag; PE.drag = null; if (d?.moved) { changed({ plan: 1, kitchen: 1, objects: 1, ui: 1 }); pePanel(); } });
-svg.addEventListener('dblclick', ev => { const id = ev.target.dataset?.roomname; if (!id) return; const r = roomById(id), n = prompt('Room name', r.name); if (n && n.trim()) { pushUndo(); r.name = n.trim().slice(0, 40); changed({ plan: 1, ui: 1 }); } });
+svg.addEventListener('dblclick', ev => { const id = ev.target.dataset?.roomname || document.elementFromPoint(ev.clientX, ev.clientY)?.dataset?.roomname; if (!id) return; const r = roomById(id), n = prompt('Room name', r.name); if (n && n.trim()) { pushUndo(); r.name = n.trim().slice(0, 40); changed({ plan: 1, ui: 1 }); } });
 function scalePlan(f) {
   const P = D.plan, S = p => [r3(p[0] * f), r3(p[1] * f)]; P.rooms.forEach(r => r.poly = r.poly.map(S)); P.walls.forEach(w => { w.a = S(w.a); w.b = S(w.b); }); P.openings.forEach(o => { o.at = r3(o.at * f); o.w = r3(o.w * f); });
   if (P.kitchen) { P.kitchen.runs.forEach(r => { r.from = S(r.from); r.to = S(r.to); }); P.kitchen.fixtures.forEach(x => x.at = r3(x.at * f)); D.kitchen.baseUnits.concat(D.kitchen.wallUnits).forEach(u => u.at = r3(u.at * f)); }
@@ -1486,14 +1497,14 @@ function refreshUI(w = {}) {
 /* ---------- 15. PERSISTENCE: export / import (versioned + validated), autosave, snapshots, GLB, BOM — and app start-up ---------- */
 /* Sample furniture following the plan's own furniture layout: [type, x ft, y ft, rotation °, extra] */
 const SAMPLE = [
-  ['bed_queen', 27.2, 9.1, 0], ['bedside', 23.6, 6.4, 0], ['bedside', 30.3, 6.4, 0], ['wardrobe4', 19.32, 9.4, 90], ['tvunit', 26.9, 15.97, 180, { w: 1.5 }], ['fan', 25.5, 11.3, 0],
-  ['sofa3', 27.2, 18.66, 0], ['armchair', 21.9, 22.3, 90], ['armchair', 21.9, 25.4, 90], ['coffee', 27.0, 22.6, 0], ['rug', 26.6, 22.6, 0, { w: 2.6, d: 1.8 }], ['tvunit', 26.7, 28.13, 180, { w: 2.2 }], ['tv', 26.7, 28.68, 180],
-  ['dining6', 13.9, 24.4, 0], ['pendant', 13.9, 24.4, 0], ['shoerack', 15.2, 14.8, 0], ['plant_tall', 30.0, 27.6, 0], ['fan', 24.5, 23, 0], ['floorlamp', 30.3, 18.0, 0],
+  ['bed_queen', 26.9, 9.1, 0], ['bedside', 23.5, 6.4, 0], ['bedside', 30.3, 6.4, 0], ['wardrobe4', 19.32, 9.4, 90], ['tvunit', 26.9, 15.97, 180, { w: 1.5 }], ['fan', 25.5, 11.3, 0],
+  ['sofa3', 27.6, 18.66, 0], ['armchair', 21.9, 22.3, 90], ['armchair', 21.9, 25.4, 90], ['coffee', 27.0, 22.6, 0], ['rug', 26.6, 22.6, 0, { w: 2.6, d: 1.8 }], ['tvunit', 26.4, 28.13, 180, { w: 2.0 }], ['tv', 26.4, 28.68, 180],
+  ['dining6', 13.9, 24.4, 0], ['pendant', 13.9, 24.4, 0], ['shoerack', 15.2, 14.8, 0], ['plant_tall', 9.9, 27.7, 0], ['fan', 24.5, 23, 0], ['floorlamp', 30.38, 28.1, 0],
   ['bed_single', 1.82, 25.54, 180], ['desk', 4.4, 18.16, 0], ['officechair', 4.2, 20.6, 180], ['bookshelf', 7.72, 26.4, -90], ['fan', 4.25, 23, 0],
   ['bed_queen', 31.1, 36.9, 180], ['bedside', 27.6, 39.6, 180], ['bedside', 34.6, 39.6, 180], ['wardrobe4', 27.2, 30.32, 0], ['dresser', 33.0, 30.07, 0], ['fan', 29.2, 35.2, 0],
   ['bed_queen', 25.9, 53.83, 180], ['bedside', 22.4, 56.55, 180], ['bedside', 29.4, 56.55, 180], ['wardrobe3', 19.32, 52.4, 90], ['fan', 24.7, 51.5, 0],
-  ['wc', 21.4, 1.38, 0], ['vanity', 24.5, 1.04, 0], ['shower', 19.82, 1.74, 0], ['wc', 14.3, 44.62, 180], ['vanity', 16.6, 44.95, 180], ['shower', 11.82, 44.26, 0], ['wc', 26.5, 41.96, 0], ['vanity', 24.1, 41.62, 0], ['shower', 28.84, 44.26, 0],
-  ['fridge1', 11.43, 39.24, 180], ['ceilinglight', 14.1, 35, 0], ['washer', 7.8, 39.3, 180], ['ceilinglight', 20.33, 37, 0],
+  ['wc', 22.1, 1.38, 0], ['vanity', 24.5, 1.04, 0], ['shower', 19.82, 1.74, 0], ['wc', 14.3, 44.62, 180], ['vanity', 16.6, 44.95, 180], ['shower', 11.82, 44.26, 0], ['wc', 26.5, 41.96, 0], ['vanity', 24.1, 41.62, 0], ['shower', 28.84, 44.26, 0],
+  ['fridge1', 11.43, 39.24, 180], ['ceilinglight', 14.1, 35, 0], ['ceilinglight', 22, 8, 0], ['ceilinglight', 26, 37.5, 0], ['ceilinglight', 27.5, 49, 0], ['ceilinglight', 4.25, 20, 0], ['ceilinglight', 22, 2.7, 0], ['ceilinglight', 14, 43.3, 0], ['ceilinglight', 26.5, 43.3, 0], ['ceilinglight', 20, 20, 0], ['washer', 7.8, 39.3, 180], ['ceilinglight', 20.33, 37, 0],
   ['outtable', 34.6, 21.6, 0], ['outchair', 34.6, 19.6, 0], ['outchair', 34.6, 23.7, 180], ['planter', 37.05, 26.4, -90], ['outchair', 34.4, 50, 0], ['planter', 37.05, 54.5, -90]
 ];
 function sampleObjects() { return SAMPLE.map(([type, x, y, deg, extra]) => newObject(type, x * FT, y * FT, { rot: normAng(THREE.MathUtils.degToRad(deg)), ...(extra || {}) })).filter(Boolean); }
@@ -1522,7 +1533,7 @@ function validateProject(raw) {
   let p; try { p = migrateProject(raw); } catch (e) { return { errors: ['Could not upgrade this older project file: ' + e.message], warnings }; }
   if (p._migratedFrom) warnings.push(`Upgraded from schema v${p._migratedFrom} to v${SCHEMA}.`);
   if (!p.plan || typeof p.plan !== 'object') return { errors: ['The file has no floor plan (“plan” section is missing).'], warnings };
-  let plan; try { plan = normalizePlan({ rooms: [], walls: [], openings: [], wallHeight: p.plan.units === 'ft' ? 10 : 3.048, ...p.plan }); } catch (e) { return { errors: ['The floor plan section is malformed: ' + e.message], warnings }; }
+  let plan; try { const pp = { ...p.plan }; for (const k of ['rooms', 'walls', 'openings']) pp[k] ??= []; pp.wallHeight ??= pp.units === 'ft' ? 10 : 3.048; plan = normalizePlan(pp); } catch (e) { return { errors: ['The floor plan section is malformed: ' + e.message], warnings }; }
   if (!Array.isArray(plan.rooms) || !Array.isArray(plan.walls) || !Array.isArray(plan.openings)) return { errors: ['The plan must contain “rooms”, “walls” and “openings” lists.'], warnings };
   plan.rooms = plan.rooms.filter((r, i) => { const ok = r && Array.isArray(r.poly) && r.poly.length >= 3 && r.poly.every(pt); if (!ok) warnings.push(`Room #${i + 1} (${r?.name || 'unnamed'}) has an invalid outline and was skipped.`); else { r.id = r.id || uid('room'); r.name = String(r.name || 'Room'); r.type = FLOOR_BY_ROOM[r.type] ? r.type : 'living'; } return ok; });
   plan.walls = plan.walls.filter((w, i) => { const ok = w && pt(w.a) && pt(w.b); if (!ok) warnings.push(`Wall #${i + 1} has invalid end points and was skipped.`); else { w.id = w.id || uid('w'); w.t = num(w.t) && w.t > 0 ? w.t : 0.15; } return ok; });
@@ -1604,7 +1615,7 @@ onChange(w => {
   if (PE.on) peRedraw(); if (w.all || w.ui || w.plan) updateRoomLabels(); if (w.all || w.objects) updateNightLights(); refreshUI(w); invalidate();
 });
 resetProject(); resize(); applySkin(); changed({ all: 1 }); renderLibrary();
-{ const b = planBounds(), R = Math.max(b.w, b.h); cam.position.set(b.cx + R * 0.55, R * 0.95, b.cy + R * 0.8); controls.target.set(b.cx, 0, b.cy); controls.update(); }
+{ const b = planBounds(), R = Math.max(b.w, b.h); cam.position.set(b.cx + R * 0.3, R * 1.0, b.cy + R * 0.85); controls.target.set(b.cx, 0, b.cy); controls.update(); }
 setStatus(defaultStatus()); requestAnimationFrame(loop); offerRestore();
 try { if (!localStorage.getItem('aptDesigner.tourDone')) setTimeout(() => tourShow(0), 900); } catch (e) { }
 window.addEventListener('error', e => console.error('App error:', e.message));

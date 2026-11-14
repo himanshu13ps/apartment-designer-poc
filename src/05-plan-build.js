@@ -59,7 +59,7 @@ function buildOpening(o, w, L, target) {
 function buildPlan() {
   const P = D.plan, H = P.wallHeight;
   ['floors', 'walls', 'ceilings'].forEach(k => disposeGroup(G[k])); WALLINFO.length = COLLIDERS.length = SWINGS.length = 0;
-  const b = planBounds(), slab = boxMesh(b.w + 0.6, 0.12, b.h + 0.6, M('paint', '#b9b4aa'), b.cx, -0.125, b.cy); slab.castShadow = false; slab.userData = { kind: 'slab' }; G.floors.add(slab);
+  const sillMat = M('paint', '#b9b4aa');   // thin strip under every wall = door thresholds
   for (const r of P.rooms) {
     if (r.poly.length < 3) continue;
     const geo = new THREE.ShapeGeometry(shapeOf(r.poly, true)); geo.rotateX(-Math.PI / 2); const f = new THREE.Mesh(geo, floorMaterial(floorSpec(r))); f.receiveShadow = true; f.position.y = 0.001; f.userData = { kind: 'floor', roomId: r.id }; G.floors.add(f);
@@ -71,6 +71,7 @@ function buildPlan() {
     const info = buildWallPieces(w, wh, full, cutMat); buildWallPieces(w, Math.min(wh, LOW_H), low, cutMat);
     info.ops.forEach(q => buildOpening(q.o, w, info.L, full));
     group.position.set(w.a[0], 0, w.a[1]); group.rotation.y = -Math.atan2(info.u[1], info.u[0]); low.visible = false; G.walls.add(group);
+    const th = boxMesh(info.L + w.t, 0.1, w.t, sillMat, info.L / 2, -0.1, 0); th.castShadow = false; th.userData = { kind: 'slab' }; group.add(th);
     WALLINFO.push({ wall: w, group, full, low, n: info.n, mid: [(w.a[0] + w.b[0]) / 2, (w.a[1] + w.b[1]) / 2], short: wh <= LOW_H + 0.3 });
     // colliders: wall stretches that are not door openings
     const doors = info.ops.filter(q => q.o.type === 'door').sort((a, c) => a.s0 - c.s0); let s = 0;

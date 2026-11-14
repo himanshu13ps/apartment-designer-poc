@@ -47,21 +47,26 @@ function autoFillKitchen({ base = true, wall = true, pref = 0.6, openShelf = fal
   const rects = K.runs.map(r => ({ id: r.id, poly: runRect(r) }));
   for (const r of K.runs) { const g = runGeom(r), fx = K.fixtures.filter(f => f.run === r.id); let at = 0, i = 0;
     for (const w of fillWidths(g.L, pref)) { const mid = at + w / 2, front = runPoint(r, g, mid, r.depth + 0.08), blind = rects.some(q => q.id !== r.id && pointInPoly(front[0], front[1], q.poly));
-      const overSink = fx.some(f => f.type === 'sink' && Math.abs(f.at - mid) < (f.w + w) / 2 - 0.05), overHob = fx.find(f => f.type === 'hob' && Math.abs(f.at - mid) < Math.max(f.w, w) / 2);
+      const overSink = fx.some(f => f.type === 'sink' && Math.abs(f.at - mid) < (f.w + w) / 2 - 0.05), overHob = fx.find(f => f.type === 'hob' && f.at >= at - 1e-6 && f.at < at + w);
       if (base) KU.baseUnits.push({ id: uid('kb'), run: r.id, at: r3(at), w, style: blind ? 'corner' : w < 0.2 ? 'filler' : overSink ? 'shutter' : (overHob || i % 3 === 1) ? 'drawer' : 'shutter' });
-      if (wall && !blind && w >= 0.2) KU.wallUnits.push({ id: uid('kw'), run: r.id, at: r3(at), w, style: overHob ? 'chimney' : openShelf && i % 3 === 2 ? 'open' : 'shutter' });
-      at += w; i++; } }
+      at += w; i++; }
+    if (!wall) continue;
+    /* wall units: a 600 mm chimney hood centred over each hob, standard modules in the stretches between; nothing above blind corners */
+    const hobs = fx.filter(f => f.type === 'hob').sort((a, b) => a.at - b.at), spans = []; let s0 = 0;
+    for (const f of hobs) { const c0 = clamp(f.at - 0.3, 0, Math.max(0, g.L - 0.6)); if (c0 - s0 > 0.02) spans.push([s0, c0, 0]); spans.push([c0, Math.min(g.L, c0 + 0.6), 1]); s0 = Math.min(g.L, c0 + 0.6); } if (g.L - s0 > 0.02) spans.push([s0, g.L, 0]);
+    let j = 0; for (const [a, b, hood] of spans) { if (hood) { KU.wallUnits.push({ id: uid('kw'), run: r.id, at: r3(a), w: r3(b - a), style: 'chimney' }); continue; } let p = a;
+      for (const w of fillWidths(b - a, pref)) { const front = runPoint(r, g, p + w / 2, r.depth + 0.08), blind = rects.some(q => q.id !== r.id && pointInPoly(front[0], front[1], q.poly));
+        if (!blind && w >= 0.15) KU.wallUnits.push({ id: uid('kw'), run: r.id, at: r3(p), w, style: openShelf && j % 3 === 2 ? 'open' : 'shutter' }); p += w; j++; } } }
   SEL.unit = null; if (silent) return; changed({ kitchen: 1, ui: 1 }); toast('Kitchen cabinets generated', 'ok');
 }
 function clearKitchen(kind) { pushUndo(); if (kind !== 'wall') D.kitchen.baseUnits = []; if (kind !== 'base') D.kitchen.wallUnits = []; SEL.unit = null; changed({ kitchen: 1, ui: 1 }); }
 function unitList(kind) { return kind === 'base' ? D.kitchen.baseUnits : kind === 'wall' ? D.kitchen.wallUnits : D.plan.kitchen.fixtures; }
 function getUnit(ref) { return ref ? unitList(ref.kind).find(u => u.id === ref.id) : null; }
 function selectUnit(ref) { SEL.unit = ref; SEL.ids = []; updateSelectionVisuals(); buildKitchen(); changedUI(); }
-/* Re-pack the units of one run edge to edge (called after a width change so neighbours shift along). */
-function repackRun(kind, runId) { let at = 0; unitList(kind).filter(u => u.run === runId).sort((a, b) => a.at - b.at).forEach(u => { u.at = r3(at); at += u.w; }); const r = kRun(runId); return r ? at - runGeom(r).L : 0; }
 function setUnitProp(ref, patch) {
-  const u = getUnit(ref); if (!u) return; pushUndo(); Object.assign(u, patch); for (const k in patch) if (patch[k] === undefined) delete u[k];
-  if (ref.kind !== 'fixture' && ('w' in patch)) { const over = repackRun(ref.kind, u.run); if (over > 0.01) toast('Units now exceed the counter run by ' + fmtLen(over, 1), 'err'); }
+  const u = getUnit(ref); if (!u) return; pushUndo(); const oldW = u.w; Object.assign(u, patch); for (const k in patch) if (patch[k] === undefined) delete u[k];
+  if (ref.kind !== 'fixture' && ('w' in patch)) { const dl = u.w - oldW, l = unitList(ref.kind).filter(q => q.run === u.run); l.forEach(q => { if (q !== u && q.at > u.at - 1e-6) q.at = r3(q.at + dl); });   // neighbours shift along, gaps are kept
+    const over = Math.max(...l.map(q => q.at + q.w)) - runGeom(kRun(u.run)).L; if (over > 0.01) toast('Units now exceed the counter run by ' + fmtLen(over, 1), 'err'); }
   if (ref.kind === 'fixture') { const r = kRun(u.run); if (r) { const g = runGeom(r); u.w = clamp(u.w, 0.25, g.L - 0.1); u.d = clamp(u.d, 0.25, r.depth - 0.1); u.at = clamp(u.at, u.w / 2 + 0.03, g.L - u.w / 2 - 0.03); } }
   changed({ kitchen: 1, ui: 1 });
 }

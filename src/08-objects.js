@@ -73,7 +73,7 @@ function rayWalls(ox, oy, dx, dy) {
   return best;
 }
 /* --- object operations (all undoable) --- */
-function selectObjects(ids, additive) { SEL.unit = null; SEL.ids = additive ? [...new Set([...SEL.ids, ...ids])] : ids.slice(); updateSelectionVisuals(); changedUI(); }
+function selectObjects(ids, additive) { const hadUnit = SEL.unit; SEL.unit = null; if (hadUnit) buildKitchen(); SEL.ids = additive ? [...new Set([...SEL.ids, ...ids])] : ids.slice(); updateSelectionVisuals(); changedUI(); }
 function changedUI() { listeners.forEach(fn => fn({ ui: 1, selection: 1 })); }
 function placeObject(type, x, z, select = true) {
   const o = newObject(type, x, z); if (!o) return null; const def = defOf(o);

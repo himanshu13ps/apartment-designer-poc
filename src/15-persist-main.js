@@ -1,14 +1,14 @@
 /* ---------- 15. PERSISTENCE: export / import (versioned + validated), autosave, snapshots, GLB, BOM — and app start-up ---------- */
 /* Sample furniture following the plan's own furniture layout: [type, x ft, y ft, rotation °, extra] */
 const SAMPLE = [
-  ['bed_queen', 27.2, 9.1, 0], ['bedside', 23.6, 6.4, 0], ['bedside', 30.3, 6.4, 0], ['wardrobe4', 19.32, 9.4, 90], ['tvunit', 26.9, 15.97, 180, { w: 1.5 }], ['fan', 25.5, 11.3, 0],
-  ['sofa3', 27.2, 18.66, 0], ['armchair', 21.9, 22.3, 90], ['armchair', 21.9, 25.4, 90], ['coffee', 27.0, 22.6, 0], ['rug', 26.6, 22.6, 0, { w: 2.6, d: 1.8 }], ['tvunit', 26.7, 28.13, 180, { w: 2.2 }], ['tv', 26.7, 28.68, 180],
-  ['dining6', 13.9, 24.4, 0], ['pendant', 13.9, 24.4, 0], ['shoerack', 15.2, 14.8, 0], ['plant_tall', 30.0, 27.6, 0], ['fan', 24.5, 23, 0], ['floorlamp', 30.3, 18.0, 0],
+  ['bed_queen', 26.9, 9.1, 0], ['bedside', 23.5, 6.4, 0], ['bedside', 30.3, 6.4, 0], ['wardrobe4', 19.32, 9.4, 90], ['tvunit', 26.9, 15.97, 180, { w: 1.5 }], ['fan', 25.5, 11.3, 0],
+  ['sofa3', 27.6, 18.66, 0], ['armchair', 21.9, 22.3, 90], ['armchair', 21.9, 25.4, 90], ['coffee', 27.0, 22.6, 0], ['rug', 26.6, 22.6, 0, { w: 2.6, d: 1.8 }], ['tvunit', 26.4, 28.13, 180, { w: 2.0 }], ['tv', 26.4, 28.68, 180],
+  ['dining6', 13.9, 24.4, 0], ['pendant', 13.9, 24.4, 0], ['shoerack', 15.2, 14.8, 0], ['plant_tall', 9.9, 27.7, 0], ['fan', 24.5, 23, 0], ['floorlamp', 30.38, 28.1, 0],
   ['bed_single', 1.82, 25.54, 180], ['desk', 4.4, 18.16, 0], ['officechair', 4.2, 20.6, 180], ['bookshelf', 7.72, 26.4, -90], ['fan', 4.25, 23, 0],
   ['bed_queen', 31.1, 36.9, 180], ['bedside', 27.6, 39.6, 180], ['bedside', 34.6, 39.6, 180], ['wardrobe4', 27.2, 30.32, 0], ['dresser', 33.0, 30.07, 0], ['fan', 29.2, 35.2, 0],
   ['bed_queen', 25.9, 53.83, 180], ['bedside', 22.4, 56.55, 180], ['bedside', 29.4, 56.55, 180], ['wardrobe3', 19.32, 52.4, 90], ['fan', 24.7, 51.5, 0],
-  ['wc', 21.4, 1.38, 0], ['vanity', 24.5, 1.04, 0], ['shower', 19.82, 1.74, 0], ['wc', 14.3, 44.62, 180], ['vanity', 16.6, 44.95, 180], ['shower', 11.82, 44.26, 0], ['wc', 26.5, 41.96, 0], ['vanity', 24.1, 41.62, 0], ['shower', 28.84, 44.26, 0],
-  ['fridge1', 11.43, 39.24, 180], ['ceilinglight', 14.1, 35, 0], ['washer', 7.8, 39.3, 180], ['ceilinglight', 20.33, 37, 0],
+  ['wc', 22.1, 1.38, 0], ['vanity', 24.5, 1.04, 0], ['shower', 19.82, 1.74, 0], ['wc', 14.3, 44.62, 180], ['vanity', 16.6, 44.95, 180], ['shower', 11.82, 44.26, 0], ['wc', 26.5, 41.96, 0], ['vanity', 24.1, 41.62, 0], ['shower', 28.84, 44.26, 0],
+  ['fridge1', 11.43, 39.24, 180], ['ceilinglight', 14.1, 35, 0], ['ceilinglight', 22, 8, 0], ['ceilinglight', 26, 37.5, 0], ['ceilinglight', 27.5, 49, 0], ['ceilinglight', 4.25, 20, 0], ['ceilinglight', 22, 2.7, 0], ['ceilinglight', 14, 43.3, 0], ['ceilinglight', 26.5, 43.3, 0], ['ceilinglight', 20, 20, 0], ['washer', 7.8, 39.3, 180], ['ceilinglight', 20.33, 37, 0],
   ['outtable', 34.6, 21.6, 0], ['outchair', 34.6, 19.6, 0], ['outchair', 34.6, 23.7, 180], ['planter', 37.05, 26.4, -90], ['outchair', 34.4, 50, 0], ['planter', 37.05, 54.5, -90]
 ];
 function sampleObjects() { return SAMPLE.map(([type, x, y, deg, extra]) => newObject(type, x * FT, y * FT, { rot: normAng(THREE.MathUtils.degToRad(deg)), ...(extra || {}) })).filter(Boolean); }
@@ -37,7 +37,7 @@ function validateProject(raw) {
   let p; try { p = migrateProject(raw); } catch (e) { return { errors: ['Could not upgrade this older project file: ' + e.message], warnings }; }
   if (p._migratedFrom) warnings.push(`Upgraded from schema v${p._migratedFrom} to v${SCHEMA}.`);
   if (!p.plan || typeof p.plan !== 'object') return { errors: ['The file has no floor plan (“plan” section is missing).'], warnings };
-  let plan; try { plan = normalizePlan({ rooms: [], walls: [], openings: [], wallHeight: p.plan.units === 'ft' ? 10 : 3.048, ...p.plan }); } catch (e) { return { errors: ['The floor plan section is malformed: ' + e.message], warnings }; }
+  let plan; try { const pp = { ...p.plan }; for (const k of ['rooms', 'walls', 'openings']) pp[k] ??= []; pp.wallHeight ??= pp.units === 'ft' ? 10 : 3.048; plan = normalizePlan(pp); } catch (e) { return { errors: ['The floor plan section is malformed: ' + e.message], warnings }; }
   if (!Array.isArray(plan.rooms) || !Array.isArray(plan.walls) || !Array.isArray(plan.openings)) return { errors: ['The plan must contain “rooms”, “walls” and “openings” lists.'], warnings };
   plan.rooms = plan.rooms.filter((r, i) => { const ok = r && Array.isArray(r.poly) && r.poly.length >= 3 && r.poly.every(pt); if (!ok) warnings.push(`Room #${i + 1} (${r?.name || 'unnamed'}) has an invalid outline and was skipped.`); else { r.id = r.id || uid('room'); r.name = String(r.name || 'Room'); r.type = FLOOR_BY_ROOM[r.type] ? r.type : 'living'; } return ok; });
   plan.walls = plan.walls.filter((w, i) => { const ok = w && pt(w.a) && pt(w.b); if (!ok) warnings.push(`Wall #${i + 1} has invalid end points and was skipped.`); else { w.id = w.id || uid('w'); w.t = num(w.t) && w.t > 0 ? w.t : 0.15; } return ok; });
@@ -119,7 +119,7 @@ onChange(w => {
   if (PE.on) peRedraw(); if (w.all || w.ui || w.plan) updateRoomLabels(); if (w.all || w.objects) updateNightLights(); refreshUI(w); invalidate();
 });
 resetProject(); resize(); applySkin(); changed({ all: 1 }); renderLibrary();
-{ const b = planBounds(), R = Math.max(b.w, b.h); cam.position.set(b.cx + R * 0.55, R * 0.95, b.cy + R * 0.8); controls.target.set(b.cx, 0, b.cy); controls.update(); }
+{ const b = planBounds(), R = Math.max(b.w, b.h); cam.position.set(b.cx + R * 0.3, R * 1.0, b.cy + R * 0.85); controls.target.set(b.cx, 0, b.cy); controls.update(); }
 setStatus(defaultStatus()); requestAnimationFrame(loop); offerRestore();
 try { if (!localStorage.getItem('aptDesigner.tourDone')) setTimeout(() => tourShow(0), 900); } catch (e) { }
 window.addEventListener('error', e => console.error('App error:', e.message));

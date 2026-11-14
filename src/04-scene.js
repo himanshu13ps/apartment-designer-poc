@@ -19,11 +19,14 @@ const sun = new THREE.DirectionalLight(0xfff2dd, 2.2); sun.shadow.mapSize.set(20
 let pmrem = null, envTex = null, composer = null, ssaoPass = null;
 const QUAL = { level: 0, pr: Math.min(window.devicePixelRatio || 1, 2), frames: 0, t0: performance.now(), fps: 60, low: 0 };
 let needsRender = true; const invalidate = () => { needsRender = true; };
-controls.addEventListener('change', invalidate); controls2d.addEventListener('change', invalidate);
+controls.addEventListener('change', invalidate);
+/* OrbitControls fires 'change' on every update() for orthographic cameras — only react when the 2D view really moved. */
+let last2d = '';
+controls2d.addEventListener('change', () => { const k = ocam.zoom.toFixed(5) + '|' + ocam.position.x.toFixed(4) + '|' + ocam.position.z.toFixed(4); if (k === last2d) return; last2d = k; invalidate(); peRedraw(); });
 
 function applySkin() {
   const s = CFG.skin, night = CFG.night;
-  renderer.shadowMap.enabled = s !== 'lowpoly' && CFG.shadows && QUAL.level < 3;
+  renderer.shadowMap.enabled = s !== 'lowpoly' && CFG.shadows && QUAL.level < 3 && VIEW.mode !== '2d';   // the 2D plan is drawn shadow-free
   renderer.shadowMap.type = s === 'realistic' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
   renderer.toneMapping = s === 'realistic' ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping; renderer.toneMappingExposure = night ? 0.9 : 1.05;
   if (s === 'realistic') { if (!envTex) { pmrem = new THREE.PMREMGenerator(renderer); envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture; } scene.environment = envTex; } else scene.environment = null;
@@ -48,6 +51,7 @@ function updateSun() {
   if (CFG.night) { sun.color.set('#8fa6d8'); sun.intensity = 0.18; hemi.intensity = 0.16; amb.intensity = 0.1; scene.background = new THREE.Color('#141a26'); }
   else { sun.color.copy(warm); sun.intensity = (s === 'lowpoly' ? 1.4 : s === 'standard' ? 2.0 : 2.6) * (0.35 + 0.65 * Math.sin(ang)); hemi.intensity = s === 'realistic' ? 0.55 : 0.95; amb.intensity = s === 'lowpoly' ? 0.45 : 0.22;
     scene.background = new THREE.Color('#cfe0f0').lerp(new THREE.Color('#f3c9a0'), 1 - clamp(Math.sin(ang) * 1.8, 0, 1)); }
+  if (VIEW.mode === 'imm' || VIEW.mode === 'walk') amb.intensity += CFG.night ? 0.12 : 0.8;   // rooms are roofed in first-person views: lift the fill light
   renderer.shadowMap.needsUpdate = true; updateNightLights(); invalidate();
 }
 /* Interior lights: placed light fixtures become point lights at night (capped for performance). */

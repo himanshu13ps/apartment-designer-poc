@@ -48,13 +48,13 @@ canvas.addEventListener('pointerdown', ev => {
   canvas.focus(); if (ev.button !== 0 || VIEW.mode === 'imm' || VIEW.mode === 'walk' || PE.on) return;
   DRAG = { type: 'none', sx: ev.clientX, sy: ev.clientY, moved: false };
   if (TOOL.name === 'measure' || TOOL.name === 'paint') { DRAG.type = 'tool'; return; }
-  if (rotHandle) { setRay(ev); if (ray.intersectObject(rotHandle).length) { DRAG.type = 'rotate'; DRAG.id = SEL.ids[0]; controls.enabled = controls2d.enabled = false; canvas.setPointerCapture(ev.pointerId); return; } }
+  if (rotHandle) { setRay(ev); if (ray.intersectObject(rotHandle).length) { DRAG.type = 'rotate'; DRAG.id = SEL.ids[0]; controls.enabled = controls2d.enabled = false; capturePointer(canvas, ev); return; } }
   const h = pick(ev, PICKABLE()), ud = h?.object.userData || {};
   if (ud.objId) { const id = ud.objId, o = objById(id); if (!o) return;
     if (ev.shiftKey) { selectObjects(SEL.ids.includes(id) ? SEL.ids.filter(i => i !== id) : [...SEL.ids, id]); DRAG.type = 'sel'; controls.enabled = controls2d.enabled = false; return; }
     if (!SEL.ids.includes(id)) selectObjects([id]);
     DRAG.type = 'move'; DRAG.id = id; DRAG.p0 = floorPoint(ev); DRAG.orig = new Map(SEL.ids.map(objById).filter(q => q && !q.locked).map(q => [q.id, { x: q.x, z: q.z }]));
-    controls.enabled = controls2d.enabled = false; canvas.setPointerCapture(ev.pointerId);
+    controls.enabled = controls2d.enabled = false; capturePointer(canvas, ev);
   } else if (ud.unitRef) { selectUnit(ud.unitRef); DRAG.type = 'sel'; } else DRAG.clear = true;
 }, { capture: true });
 canvas.addEventListener('pointermove', ev => {

@@ -5,7 +5,7 @@ function flyTo(pos, target, ms = 700, done) {
   stopTransition(); const p0 = cam.position.clone(), t0 = controls.target.clone(), p1 = new THREE.Vector3(...pos), t1 = new THREE.Vector3(...target);
   VIEW.transition = tween(ms, t => { cam.position.lerpVectors(p0, p1, t); controls.target.lerpVectors(t0, t1, t); cam.lookAt(controls.target); }, () => { VIEW.transition = null; done && done(); });
 }
-function resetView(ms = 800) { const b = planBounds(), R = Math.max(b.w, b.h); if (VIEW.mode === '2d') return fit2d(b, ms); if (VIEW.mode !== '3d') return; flyTo([b.cx + R * 0.55, R * 0.95, b.cy + R * 0.8], [b.cx, 0, b.cy], ms); }
+function resetView(ms = 800) { const b = planBounds(), R = Math.max(b.w, b.h); if (VIEW.mode === '2d') return fit2d(b, ms); if (VIEW.mode !== '3d') return; flyTo([b.cx + R * 0.3, R * 1.0, b.cy + R * 0.85], [b.cx, 0, b.cy], ms); }
 function fit2d(b, ms = 600) {
   const a = viewEl.clientWidth / viewEl.clientHeight, z1 = Math.min(20 * a / (b.w + 2.5), 20 / (b.h + 2.5)), z0 = ocam.zoom, c0 = controls2d.target.clone(), c1 = new THREE.Vector3(b.cx, 0, b.cy); stopTransition();
   VIEW.transition = tween(ms, t => { ocam.zoom = lerp(z0, z1, t); controls2d.target.lerpVectors(c0, c1, t); ocam.position.set(controls2d.target.x, 60, controls2d.target.z); ocam.updateProjectionMatrix(); peRedraw(); }, () => { VIEW.transition = null; });
@@ -28,7 +28,7 @@ function setViewMode(m) {
   stopTransition(); if (m !== '2d' && PE.on) togglePlanEdit(false);
   VIEW.mode = m; activeCam = m === '2d' ? ocam : cam; controls.enabled = m === '3d'; controls2d.enabled = m === '2d';
   if (m === '2d') { ocam.position.set(controls2d.target.x, 60, controls2d.target.z); fit2d(planBounds(), 1); }
-  syncViewUI(); setupComposer(); updateWallVisibility(true); updateRoomLabels(); updateSelectionVisuals(); setStatus(m === '2d' ? '2D plan: drag to pan, scroll to zoom. Items can be selected and dragged here too.' : defaultStatus()); invalidate();
+  syncViewUI(); applySkin(); updateWallVisibility(true); updateRoomLabels(); updateSelectionVisuals(); setStatus(m === '2d' ? '2D plan: drag to pan, scroll to zoom. Items can be selected and dragged here too.' : defaultStatus()); invalidate();
 }
 function syncViewUI() { const m = VIEW.mode === 'imm' || VIEW.mode === 'trans' ? '3d' : VIEW.mode; $$('#segView button').forEach(b => b.classList.toggle('on', b.dataset.v === m)); $('#immBar').classList.toggle('on', VIEW.mode === 'imm' || VIEW.mode === 'walk');
   $('#immHint').textContent = VIEW.mode === 'walk' ? 'Walk: W A S D / arrows · drag to look · Shift = faster' : 'Drag to look around 360° · scroll to zoom'; $('#btnExitImm').textContent = VIEW.mode === 'walk' ? '✕ Exit walk mode (Esc)' : '✕ Exit immersive view (Esc)'; }
@@ -38,7 +38,7 @@ function insidePoint(r) { let c = polyCentroid(r.poly); if (!pointInPoly(c[0], c
 function enterFirstPerson(x, z, mode, label) {
   stopTransition(); if (VIEW.mode === '2d') { if (PE.on) togglePlanEdit(false); activeCam = cam; controls2d.enabled = false; }
   if (VIEW.mode === '3d' || VIEW.mode === '2d' || !VIEW.prev) VIEW.prev = { pos: cam.position.toArray(), target: controls.target.toArray() };
-  controls.enabled = false; VIEW.mode = mode; setTool('select'); syncViewUI(); setupComposer(); updateRoomLabels(); updateSelectionVisuals(); updateWallVisibility(true);
+  controls.enabled = false; VIEW.mode = mode; setTool('select'); syncViewUI(); setupComposer(); updateSun(); updateRoomLabels(); updateSelectionVisuals(); updateWallVisibility(true);
   const p0 = cam.position.clone(), q0 = cam.quaternion.clone(), f0 = cam.fov, p1 = new THREE.Vector3(x, EYE, z), d = new THREE.Vector3(); cam.getWorldDirection(d);
   VIEW.yaw = Math.abs(d.x) + Math.abs(d.z) < 0.05 ? 0 : Math.atan2(-d.x, -d.z); VIEW.pitch = 0; const q1 = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, VIEW.yaw, 0, 'YXZ'));
   VIEW.transition = tween(900, t => { cam.position.lerpVectors(p0, p1, t); cam.quaternion.slerpQuaternions(q0, q1, t); cam.fov = lerp(f0, 70, t); cam.updateProjectionMatrix(); }, () => { VIEW.transition = null; applyLook(); });
@@ -50,13 +50,13 @@ function exitImmersive(after) {
   if (VIEW.mode !== 'imm' && VIEW.mode !== 'walk' && VIEW.mode !== 'trans') return; stopTransition();
   const b = planBounds(), prev = VIEW.prev || { pos: [b.cx + 8, 14, b.cy + 12], target: [b.cx, 0, b.cy] }, p0 = cam.position.clone(), q0 = cam.quaternion.clone(), f0 = cam.fov, p1 = new THREE.Vector3(...prev.pos), tg = new THREE.Vector3(...prev.target);
   const q1 = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(p1, tg, cam.up));
-  VIEW.mode = 'trans'; VIEW.keys = {}; syncViewUI(); updateWallVisibility(true);
+  VIEW.mode = 'trans'; VIEW.keys = {}; syncViewUI(); updateSun(); updateWallVisibility(true);
   VIEW.transition = tween(800, t => { cam.position.lerpVectors(p0, p1, t); cam.quaternion.slerpQuaternions(q0, q1, t); cam.fov = lerp(f0, 50, t); cam.updateProjectionMatrix(); }, () => {
     VIEW.transition = null; VIEW.mode = '3d'; VIEW.prev = null; controls.target.copy(tg); cam.position.copy(p1); cam.lookAt(tg); controls.enabled = true; controls.update(); syncViewUI(); setupComposer(); updateWallVisibility(true); updateRoomLabels(); updateSelectionVisuals(); setStatus(defaultStatus()); after && after(); });
 }
 /* Look-around (immersive + walk): mouse / touch drag, wheel = field-of-view zoom */
 let LOOK = null;
-canvas.addEventListener('pointerdown', ev => { if (VIEW.mode !== 'imm' && VIEW.mode !== 'walk') return; LOOK = { x: ev.clientX, y: ev.clientY }; canvas.setPointerCapture(ev.pointerId); });
+canvas.addEventListener('pointerdown', ev => { if (VIEW.mode !== 'imm' && VIEW.mode !== 'walk') return; LOOK = { x: ev.clientX, y: ev.clientY }; capturePointer(canvas, ev); });
 canvas.addEventListener('pointermove', ev => { if (!LOOK || VIEW.transition) return; const k = 0.0045 * cam.fov / 70; VIEW.yaw += (ev.clientX - LOOK.x) * k; VIEW.pitch = clamp(VIEW.pitch + (ev.clientY - LOOK.y) * k, -1.45, 1.45); LOOK.x = ev.clientX; LOOK.y = ev.clientY; applyLook(); });
 canvas.addEventListener('pointerup', () => { LOOK = null; }); canvas.addEventListener('pointercancel', () => { LOOK = null; });
 canvas.addEventListener('wheel', ev => { if (VIEW.mode !== 'imm' && VIEW.mode !== 'walk') return; ev.preventDefault(); cam.fov = clamp(cam.fov + Math.sign(ev.deltaY) * 3, 25, 95); cam.updateProjectionMatrix(); invalidate(); }, { passive: false });

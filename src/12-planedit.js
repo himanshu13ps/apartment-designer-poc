@@ -28,7 +28,6 @@ function peRedraw() {
   if (PE.pts.length) { const a = w2s(...PE.pts[0]), b = w2s(...(PE.pts[1] || PE.hover || PE.pts[0])); out.push(`<line class="cal" x1="${f(a[0])}" y1="${f(a[1])}" x2="${f(b[0])}" y2="${f(b[1])}"/><circle cx="${f(a[0])}" cy="${f(a[1])}" r="4" fill="#e03131"/>`); }
   svg.innerHTML = out.join('');
 }
-controls2d.addEventListener('change', peRedraw);
 svg.addEventListener('wheel', ev => { ev.preventDefault(); canvas.dispatchEvent(new WheelEvent('wheel', ev)); }, { passive: false });
 svg.addEventListener('pointerdown', ev => {
   const t = ev.target, ds = t.dataset || {}, p = evW(ev);
@@ -44,7 +43,8 @@ svg.addEventListener('pointerdown', ev => {
   else if (ds.op) { PE.sel = { type: 'opening', id: ds.op }; d = { kind: 'op', o: D.plan.openings.find(o => o.id === ds.op) }; }
   else if (ds.wall) PE.sel = { type: 'wall', id: ds.wall };
   else if (ds.roomname) PE.sel = { type: 'room', id: ds.roomname };
-  if (d) { PE.drag = d; d.moved = false; svg.setPointerCapture(ev.pointerId); } pePanel(); peRedraw(); ev.stopPropagation();
+  if (d) { PE.drag = d; d.moved = false; capturePointer(svg, ev); } pePanel(); if (!ds.roomname) peRedraw();   // keep the label element alive so a double-click can land on it
+  ev.stopPropagation();
 });
 svg.addEventListener('pointermove', ev => {
   const p = evW(ev), d = PE.drag; if (PE.tool && PE.pts.length === 1) { PE.hover = p; peRedraw(); return; } if (!d) return; if (!d.moved) { d.moved = true; pushUndo(); }
@@ -57,7 +57,7 @@ svg.addEventListener('pointermove', ev => {
   peRedraw();
 });
 svg.addEventListener('pointerup', () => { const d = PE.drag; PE.drag = null; if (d?.moved) { changed({ plan: 1, kitchen: 1, objects: 1, ui: 1 }); pePanel(); } });
-svg.addEventListener('dblclick', ev => { const id = ev.target.dataset?.roomname; if (!id) return; const r = roomById(id), n = prompt('Room name', r.name); if (n && n.trim()) { pushUndo(); r.name = n.trim().slice(0, 40); changed({ plan: 1, ui: 1 }); } });
+svg.addEventListener('dblclick', ev => { const id = ev.target.dataset?.roomname || document.elementFromPoint(ev.clientX, ev.clientY)?.dataset?.roomname; if (!id) return; const r = roomById(id), n = prompt('Room name', r.name); if (n && n.trim()) { pushUndo(); r.name = n.trim().slice(0, 40); changed({ plan: 1, ui: 1 }); } });
 function scalePlan(f) {
   const P = D.plan, S = p => [r3(p[0] * f), r3(p[1] * f)]; P.rooms.forEach(r => r.poly = r.poly.map(S)); P.walls.forEach(w => { w.a = S(w.a); w.b = S(w.b); }); P.openings.forEach(o => { o.at = r3(o.at * f); o.w = r3(o.w * f); });
   if (P.kitchen) { P.kitchen.runs.forEach(r => { r.from = S(r.from); r.to = S(r.to); }); P.kitchen.fixtures.forEach(x => x.at = r3(x.at * f)); D.kitchen.baseUnits.concat(D.kitchen.wallUnits).forEach(u => u.at = r3(u.at * f)); }

@@ -28,7 +28,8 @@ function el(tag, attrs = {}, ...kids) {
   for (const k of kids.flat()) if (k != null && k !== false) e.append(k.nodeType ? k : document.createTextNode(k));
   return e;
 }
-function toast(msg, type = '', ms = 2600) { const t = el('div', { class: 'toast ' + type }, msg); $('#toasts').append(t); setTimeout(() => t.remove(), ms); }
+function toast(msg, type = '', ms = 2600) { const box = $('#toasts'), t = el('div', { class: 'toast ' + type }, msg); while (box.children.length >= 3) box.firstChild.remove(); box.append(t); setTimeout(() => t.remove(), ms); }
+function capturePointer(elm, ev) { try { elm.setPointerCapture(ev.pointerId); } catch (e) { /* pointer already gone */ } }
 function setStatus(s) { $('#status').textContent = s; }
 function download(name, data, mime = 'application/octet-stream') {
   const url = data instanceof Blob ? URL.createObjectURL(data) : (typeof data === 'string' && data.startsWith('data:') ? data : URL.createObjectURL(new Blob([data], { type: mime })));
