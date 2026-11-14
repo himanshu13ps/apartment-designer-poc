@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Apartment Interior Designer — 3.5 BHK</title>
+<style>
+:root{--bg:#f4f5f7;--panel:#ffffff;--line:#e1e4ea;--ink:#1d2330;--mute:#6b7385;--acc:#2f6fed;--acc2:#e8f0ff;--warn:#d9480f;--ok:#2b8a3e;--r:8px}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;font:13px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--bg)}
+button,input,select{font:inherit;color:inherit}
+#app{display:flex;flex-direction:column;height:100%}
+#topbar{display:flex;align-items:center;gap:6px;height:44px;padding:0 8px;background:var(--panel);border-bottom:1px solid var(--line);flex:none;overflow-x:auto;white-space:nowrap}
+#topbar .brand{font-weight:700;margin:0 8px 0 4px}
+#topbar .sep{width:1px;height:22px;background:var(--line);margin:0 4px;flex:none}
+#topbar .grow{flex:1}
+.btn{border:1px solid var(--line);background:#fff;border-radius:6px;padding:5px 9px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;flex:none}
+.btn:hover{background:#f0f3f9}
+.btn.on{background:var(--acc2);border-color:var(--acc);color:#1747b3}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+.btn.pri:hover{background:#255fd6}
+.btn.danger{color:var(--warn)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.sm{padding:3px 7px;font-size:12px}
+select,input[type=text],input[type=number],input[type=search]{border:1px solid var(--line);border-radius:6px;padding:4px 6px;background:#fff;min-width:0}
+input[type=color]{width:34px;height:26px;padding:0;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer}
+input[type=range]{width:100%}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;flex:none}
+.seg button{border:0;background:#fff;padding:5px 9px;cursor:pointer;border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button.on{background:var(--acc);color:#fff}
+#main{flex:1;display:flex;min-height:0}
+#panel{width:318px;flex:none;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;transition:margin-left .2s}
+#panel.collapsed{margin-left:-318px}
+.tabs{display:flex;border-bottom:1px solid var(--line);flex:none}
+.tabs button{flex:1;border:0;background:none;padding:8px 2px;cursor:pointer;font-size:11.5px;color:var(--mute);border-bottom:2px solid transparent}
+.tabs button.on{color:var(--acc);border-bottom-color:var(--acc);font-weight:600}
+.tabpane{display:none;flex:1;overflow-y:auto;padding:10px}
+.tabpane.on{display:block}
+h3{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);margin:14px 0 6px}
+h3:first-child{margin-top:0}
+.row{display:flex;align-items:center;gap:6px;margin:5px 0}
+.row>label{flex:0 0 92px;color:var(--mute);font-size:12px}
+.row>input[type=text],.row>input[type=number],.row>select{flex:1}
+.row.wrap{flex-wrap:wrap}
+.hint{color:var(--mute);font-size:11.5px;margin:4px 0}
+.card{border:1px solid var(--line);border-radius:var(--r);padding:8px;margin:6px 0;background:#fff}
+.roomitem{display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid var(--line);border-radius:var(--r);margin:4px 0;cursor:pointer}
+.roomitem:hover,.roomitem.hl{background:var(--acc2);border-color:var(--acc)}
+.roomitem .nm{flex:1;font-weight:600}
+.roomitem .ar{color:var(--mute);font-size:11.5px}
+.libgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.libitem{border:1px solid var(--line);border-radius:var(--r);padding:4px;text-align:center;cursor:grab;background:#fff;user-select:none}
+.libitem:hover{border-color:var(--acc);background:var(--acc2)}
+.libitem img,.libitem .ph{width:100%;aspect-ratio:4/3;object-fit:contain;display:block;background:#f3f5f9;border-radius:5px}
+.libitem span{display:block;font-size:10.5px;line-height:1.2;margin-top:3px;min-height:25px}
+.swatches{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0}
+.sw{width:22px;height:22px;border-radius:5px;border:1px solid rgba(0,0,0,.18);cursor:pointer}
+.sw:hover{transform:scale(1.15)}
+table.bom{width:100%;border-collapse:collapse;font-size:11.5px}
+table.bom th,table.bom td{border-bottom:1px solid var(--line);padding:3px 4px;text-align:left}
+table.bom input{width:64px;padding:2px 4px}
+#view{flex:1;position:relative;min-width:0;background:#dfe5ee;overflow:hidden}
+#c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
+#labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.lbl{position:absolute;transform:translate(-50%,-50%);white-space:nowrap;font-size:11.5px;padding:1px 6px;border-radius:10px;background:rgba(255,255,255,.88);border:1px solid rgba(0,0,0,.12);text-align:center}
+.lbl.room{background:rgba(255,255,255,.75);font-weight:600;line-height:1.25;border-radius:6px}
+.lbl.room small{display:block;font-weight:400;color:#444}
+.lbl.dim{background:#1d2330;color:#fff;border:0}
+.lbl.meas{background:var(--acc);color:#fff;border:0;font-weight:600}
+#planSvg{position:absolute;inset:0;width:100%;height:100%;display:none}
+#planSvg.on{display:block}
+#planSvg{pointer-events:none}
+#planSvg .w,#planSvg .ep,#planSvg .rv,#planSvg .op,#planSvg .oph{pointer-events:auto}
+#planSvg .w{stroke:#1d2330;stroke-opacity:.55;stroke-linecap:round;cursor:pointer}
+#planSvg .w.sel{stroke:var(--acc);stroke-opacity:.9}
+#planSvg .ep{fill:#fff;stroke:var(--acc);stroke-width:2;cursor:move}
+#planSvg .rv{fill:#ffd43b;stroke:#8a6d00;cursor:move}
+#planSvg .op{stroke-width:2;cursor:move;fill-opacity:.85}
+#planSvg .op.door{fill:#ffa94d;stroke:#b35c00}
+#planSvg .op.window{fill:#74c0fc;stroke:#1864ab}
+#planSvg .op.sel{stroke:#e03131;stroke-width:3}
+#planSvg .oph{fill:#fff;stroke:#333;cursor:ew-resize}
+#planSvg text{font-size:12px;font-weight:600;fill:#1d2330;text-anchor:middle;cursor:text;paint-order:stroke;stroke:#fff;stroke-width:3px}
+#planSvg .cal{stroke:#e03131;stroke-width:2;stroke-dasharray:6 4}
+#immBar{position:absolute;top:12px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:10px;background:rgba(20,24,34,.86);color:#fff;padding:8px 10px 8px 14px;border-radius:24px;z-index:5}
+#immBar.on{display:flex}
+#immBar .btn{background:#ff6b6b;border-color:#ff6b6b;color:#fff;font-weight:700;border-radius:18px}
+#status{position:absolute;left:10px;bottom:8px;background:rgba(255,255,255,.85);border-radius:6px;padding:3px 8px;font-size:11.5px;color:#333;pointer-events:none;max-width:70%}
+#fps{position:absolute;right:10px;bottom:8px;background:rgba(255,255,255,.85);border-radius:6px;padding:3px 8px;font-size:11px;color:#555;pointer-events:none}
+#assume{position:absolute;right:10px;top:10px;width:290px;max-height:60%;overflow:auto;background:rgba(255,255,255,.95);border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;font-size:11.5px;display:none;z-index:4}
+#assume.on{display:block}
+#assume ul{margin:4px 0;padding-left:16px}
+#toasts{position:absolute;left:50%;bottom:36px;transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;align-items:center;z-index:20;pointer-events:none}
+.toast{background:#1d2330;color:#fff;padding:7px 14px;border-radius:18px;font-size:12.5px;box-shadow:0 4px 14px rgba(0,0,0,.25);max-width:520px}
+.toast.err{background:#c92a2a}.toast.ok{background:#2b8a3e}
+.modal{position:fixed;inset:0;background:rgba(15,20,30,.5);display:none;align-items:center;justify-content:center;z-index:50}
+.modal.on{display:flex}
+.modal .box{background:#fff;border-radius:12px;padding:18px 20px;max-width:720px;width:92%;max-height:86vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.modal h2{margin:0 0 10px;font-size:17px}
+.keys{display:grid;grid-template-columns:150px 1fr;gap:4px 12px}
+kbd{background:#f1f3f7;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px;font:11.5px ui-monospace,monospace}
+#tour{position:fixed;z-index:60;background:#1d2330;color:#fff;border-radius:10px;padding:12px 14px;width:290px;box-shadow:0 10px 30px rgba(0,0,0,.35);display:none}
+#tour.on{display:block}
+#tour b{display:block;margin-bottom:4px}
+#tour .row{justify-content:space-between;margin-top:10px}
+#tour .btn{background:#2f3a52;border-color:#3d4a66;color:#fff}
+.tag{font-size:10.5px;padding:1px 6px;border-radius:9px;background:#fff3bf;color:#7a5b00}
+.tag.red{background:#ffe3e3;color:#a61e1e}
+</style>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <button class="btn" id="btnPanel" title="Collapse / expand side panel (Tab)">☰</button>
+    <span class="brand">Apartment Designer</span>
+    <button class="btn" id="btnUndo" title="Undo (Ctrl+Z)">↶ Undo</button>
+    <button class="btn" id="btnRedo" title="Redo (Ctrl+Y)">↷ Redo</button>
+    <span class="sep"></span>
+    <span class="seg" id="segView"><button data-v="3d" class="on" title="3D orbit view">3D</button><button data-v="2d" title="Top-down plan with dimensions">2D plan</button><button data-v="walk" title="First-person walk (WASD)">Walk</button></span>
+    <select id="selWalls" title="Wall display"><option value="auto">Walls: dollhouse</option><option value="full">Walls: full height</option><option value="low">Walls: low</option></select>
+    <select id="selSkin" title="Render skin"><option value="lowpoly">Skin: Low poly</option><option value="standard">Skin: Standard</option><option value="realistic">Skin: Realistic</option></select>
+    <span class="sep"></span>
+    <button class="btn" id="btnMeasure" title="Measure distance (M)">📏 Measure</button>
+    <button class="btn on" id="btnSnap" title="Toggle snapping (S)">🧲 Snap</button>
+    <button class="btn" id="btnPlanEdit" title="Edit the floor plan geometry">✎ Plan edit</button>
+    <button class="btn" id="btnUnits" title="Toggle feet-inches / metric (U)">ft-in</button>
+    <span class="grow"></span>
+    <button class="btn" id="btnShot" title="Save PNG screenshot">📷 Screenshot</button>
+    <button class="btn pri" id="btnSave" title="Export project as JSON">⭳ Export JSON</button>
+    <button class="btn" id="btnHelp" title="Keyboard shortcuts (?)">?</button>
+  </div>
+  <div id="main">
+    <div id="panel">
+      <div class="tabs" id="tabs">
+        <button data-tab="rooms" class="on">Rooms</button><button data-tab="library">Library</button><button data-tab="props">Properties</button><button data-tab="mats">Materials</button><button data-tab="view">View</button><button data-tab="project">Project</button>
+      </div>
+      <div class="tabpane on" id="tab-rooms"></div>
+      <div class="tabpane" id="tab-library"></div>
+      <div class="tabpane" id="tab-props"></div>
+      <div class="tabpane" id="tab-mats"></div>
+      <div class="tabpane" id="tab-view"></div>
+      <div class="tabpane" id="tab-project"></div>
+    </div>
+    <div id="view">
+      <canvas id="c" tabindex="0"></canvas>
+      <div id="labels"></div>
+      <svg id="planSvg"></svg>
+      <div id="immBar"><span id="immHint">Drag to look around · scroll to zoom</span><button class="btn" id="btnExitImm">✕ Exit immersive view (Esc)</button></div>
+      <div id="assume"></div>
+      <div id="status">Loading…</div>
+      <div id="fps"></div>
+      <div id="toasts"></div>
+    </div>
+  </div>
+</div>
+<div class="modal" id="helpModal"><div class="box"><h2>Keyboard shortcuts & help</h2><div class="keys" id="helpKeys"></div><div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn" id="btnTourAgain">Replay tour</button><button class="btn pri" id="btnHelpClose">Close</button></div></div></div>
+<div class="modal" id="bomModal"><div class="box"><h2>Furniture list / bill of materials</h2><div id="bomBody"></div><div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn" id="btnBomCsv">Export CSV</button><button class="btn pri" id="btnBomClose">Close</button></div></div></div>
+<div id="tour"><b id="tourTitle"></b><span id="tourText"></span><div class="row"><span id="tourStep" class="hint" style="color:#aab"></span><span><button class="btn sm" id="tourSkip">Skip</button> <button class="btn sm" id="tourNext">Next</button></span></div></div>
+<input type="file" id="fileJson" accept=".json,application/json" hidden>
+<input type="file" id="fileImg" accept="image/*" hidden>
+<script type="module">
